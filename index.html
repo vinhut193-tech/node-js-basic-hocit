@@ -1,76 +1,181 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Quản lý Nội bộ - Phân quyền & OTP</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #eef2f3; color: #333; }
+        .container { max-width: 450px; margin: 50px auto; background: white; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        h2 { text-align: center; color: #2c3e50; margin-bottom: 25px; }
+        input { width: 100%; padding: 12px; margin: 10px 0; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-size: 14px; }
+        button { width: 100%; padding: 12px; background: #24b47e; color: white; border: none; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 16px; transition: 0.3s; }
+        button:hover { background: #1f9a6c; }
+        .hidden { display: none; }
+        .admin-section { background: #fff5f5; border: 2px dashed #ff4d4d; color: #d63031; padding: 15px; margin-top: 20px; border-radius: 6px; text-align: center; }
+        .user-info { border-bottom: 1px solid #eee; padding-bottom: 15px; margin-bottom: 15px; }
+        .link-text { text-align: center; margin-top: 15px; font-size: 14px; }
+        .link-text a { color: #3498db; text-decoration: none; }
+        .link-text a:hover { text-decoration: underline; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="auth-form">
+    <h2 id="form-title">Hệ Thống Đăng Nhập</h2>
+    
+    <div id="login-fields">
+        <input type="email" id="email" placeholder="Email đăng nhập">
+        <input type="password" id="password" placeholder="Mật khẩu">
+        <button onclick="handleLogin()">Đăng Nhập</button>
+        <div class="link-text">
+            <a href="#" onclick="toggleReset(true)">Quên mật khẩu? Nhận mã OTP</a>
+        </div>
+    </div>
+
+    <div id="reset-fields" class="hidden">
+        <input type="email" id="reset-email" placeholder="Nhập Email để nhận mã 6 số">
+        <button id="btn-send-otp" onclick="handleSendOTP()">Gửi Mã Xác Nhận</button>
+        
+        <div id="otp-confirm" class="hidden">
+            <hr style="margin: 20px 0; border: 0; border-top: 1px solid #eee;">
+            <input type="text" id="otp-code" placeholder="Nhập mã 6 số từ Gmail">
+            <input type="password" id="new-password" placeholder="Mật khẩu mới">
+            <button onclick="handleVerifyOTP()">Cập Nhật Mật Khẩu</button>
+        </div>
+        <div class="link-text">
+            <a href="#" onclick="toggleReset(false)">Quay lại trang Đăng nhập</a>
+        </div>
+    </div>
+</div>
+
+<div id="main-content" class="container hidden">
+    <div class="user-info">
+        <h3>Xin chào, <span id="user-display" style="color: #24b47e;"></span>!</h3>
+        <p>Quyền truy cập: <strong><span id="role-display">Đang kiểm tra...</span></strong></p>
+    </div>
+    
+    <div id="admin-only" class="hidden admin-section">
+        ⚠️ <strong>KHU VỰC QUẢN TRỊ</strong><br>
+        Bạn đang có quyền Admin. Bạn có thể xem báo cáo và chỉnh sửa hệ thống.
+    </div>
+
+    <div id="staff-only" class="hidden" style="margin-top: 20px; text-align: center; color: #666;">
+        Bạn đang xem giao diện dành cho Nhân viên.
+    </div>
+
+    <button onclick="handleLogout()" style="background:#636e72; margin-top:25px;">Đăng Xuất</button>
+</div>
+
 <script>
-    // --- CẤU HÌNH ---
+    // 1. CẤU HÌNH KẾT NỐI
     const SUPABASE_URL = 'https://jwcwptknoynvthykuwbz.supabase.co';
     const SUPABASE_KEY = 'sb_publishable_yCpypsxeIeUTndPCq9rBtQ__-85Kbjv';
     
-    // Đổi tên biến ở đây để tránh trùng tên thư viện
-    const sp = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+    // Khởi tạo client với tên biến tránh trùng lặp
+    const spClient = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-    // --- XỬ LÝ ĐĂNG NHẬP ---
+    // 2. XỬ LÝ ĐĂNG NHẬP
     async function handleLogin() {
         const email = document.getElementById('email').value;
         const password = document.getElementById('password').value;
-        const { data, error } = await sp.auth.signInWithPassword({ email, password }); // Dùng 'sp'
+        if(!email || !password) return alert("Vui lòng điền đầy đủ thông tin!");
+
+        const { data, error } = await spClient.auth.signInWithPassword({ email, password });
         if (error) alert("Lỗi: " + error.message);
     }
 
-    // --- GỬI MÃ OTP ---
+    // 3. GỬI MÃ OTP VỀ GMAIL
     async function handleSendOTP() {
         const email = document.getElementById('reset-email').value;
-        const { error } = await sp.auth.resetPasswordForEmail(email); // Dùng 'sp'
-        if (error) alert("Lỗi: " + error.message);
+        if(!email) return alert("Vui lòng nhập email!");
+
+        const { error } = await spClient.auth.resetPasswordForEmail(email);
+        if (error) alert("Lỗi gửi mã: " + error.message);
         else {
-            alert("Mã 6 số đã được gửi vào Gmail!");
+            alert("Mã 6 số đã được gửi vào Gmail của bạn!");
             document.getElementById('otp-confirm').classList.remove('hidden');
-            document.getElementById('btn-send-otp').classList.add('hidden');
+            document.getElementById('btn-send-otp').innerText = "Gửi lại mã";
         }
     }
 
-    // --- XÁC NHẬN OTP VÀ CẬP NHẬT PASS ---
+    // 4. XÁC NHẬN OTP VÀ ĐỔI PASS
     async function handleVerifyOTP() {
         const email = document.getElementById('reset-email').value;
         const token = document.getElementById('otp-code').value;
         const newPassword = document.getElementById('new-password').value;
 
-        const { data, error } = await sp.auth.verifyOtp({ email, token, type: 'recovery' }); // Dùng 'sp'
+        if(!token || !newPassword) return alert("Vui lòng nhập mã và mật khẩu mới!");
+
+        // Xác thực mã OTP
+        const { data, error } = await spClient.auth.verifyOtp({ email, token, type: 'recovery' });
         
-        if (error) alert("Mã không đúng: " + error.message);
+        if (error) alert("Mã xác nhận không đúng: " + error.message);
         else {
-            const { error: updateError } = await sp.auth.updateUser({ password: newPassword }); // Dùng 'sp'
+            // Cập nhật mật khẩu mới vào hệ thống
+            const { error: updateError } = await spClient.auth.updateUser({ password: newPassword });
             if (updateError) alert("Lỗi cập nhật: " + updateError.message);
             else {
-                alert("Đổi mật khẩu thành công! Hãy đăng nhập lại.");
+                alert("Đổi mật khẩu thành công! Giao diện sẽ tải lại.");
                 location.reload();
             }
         }
     }
 
-    // --- THEO DÕI TRẠNG THÁI ---
-    sp.auth.onAuthStateChange(async (event, session) => { // Dùng 'sp'
+    // 5. THEO DÕI TRẠNG THÁI & PHÂN QUYỀN (Quan trọng nhất)
+    spClient.auth.onAuthStateChange(async (event, session) => {
+        const authForm = document.getElementById('auth-form');
+        const mainContent = document.getElementById('main-content');
+        const adminSection = document.getElementById('admin-only');
+        const staffSection = document.getElementById('staff-only');
+
         if (session) {
-            document.getElementById('auth-form').classList.add('hidden');
-            document.getElementById('main-content').classList.remove('hidden');
+            // Đã đăng nhập
+            authForm.classList.add('hidden');
+            mainContent.classList.remove('hidden');
             document.getElementById('user-display').innerText = session.user.email;
             
-            // Truy vấn quyền từ bảng profiles
-            const { data } = await sp.from('profiles').select('role').eq('id', session.user.id).single(); // Dùng 'sp'
+            // Lấy quyền (Role) từ bảng profiles bạn đã tạo
+            const { data, error } = await spClient
+                .from('profiles')
+                .select('role')
+                .eq('id', session.user.id)
+                .single();
+
             if (data) {
-                document.getElementById('role-display').innerText = data.role;
-                if (data.role === 'admin') document.getElementById('admin-only').classList.remove('hidden');
+                const userRole = data.role ? data.role.toLowerCase() : 'user';
+                document.getElementById('role-display').innerText = userRole.toUpperCase();
+                
+                if (userRole === 'admin') {
+                    adminSection.classList.remove('hidden');
+                    staffSection.classList.add('hidden');
+                } else {
+                    adminSection.classList.add('hidden');
+                    staffSection.classList.remove('hidden');
+                }
+            } else {
+                document.getElementById('role-display').innerText = "Chưa phân quyền";
             }
         } else {
-            document.getElementById('auth-form').classList.remove('hidden');
-            document.getElementById('main-content').classList.add('hidden');
+            // Chưa đăng nhập hoặc đã Logout
+            authForm.classList.remove('hidden');
+            mainContent.classList.add('hidden');
         }
     });
 
+    // 6. ĐĂNG XUẤT
     async function handleLogout() {
-        await sp.auth.signOut(); // Dùng 'sp'
+        await spClient.auth.signOut();
     }
 
+    // Chuyển đổi giữa Login và Quên pass
     function toggleReset(show) {
         document.getElementById('login-fields').classList.toggle('hidden', show);
         document.getElementById('reset-fields').classList.toggle('hidden', !show);
-        document.getElementById('form-title').innerText = show ? "Khôi phục mật khẩu" : "Đăng nhập";
+        document.getElementById('form-title').innerText = show ? "Khôi phục mật khẩu" : "Hệ Thống Đăng Nhập";
     }
 </script>
+
+</body>
+</html>
