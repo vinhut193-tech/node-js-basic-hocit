@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hệ thống Quản lý Nội bộ</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f4f4f4; }
+        .container { max-width: 400px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 10px; background: #24b47e; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:hover { background: #1f9a6c; }
+        .hidden { display: none; }
+        .admin-section { color: red; font-weight: bold; border: 1px solid red; padding: 10px; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+<div class="container" id="auth-form">
+    <h2 id="form-title">Đăng nhập</h2>
+    
+    <div id="login-fields">
+        <input type="email" id="email" placeholder="Email của bạn">
+        <input type="password" id="password" placeholder="Mật khẩu">
+        <button onclick="handleLogin()">Đăng nhập</button>
+        <p style="text-align:center"><a href="#" onclick="toggleReset(true)">Quên mật khẩu?</a></p>
+    </div>
+
+    <div id="reset-fields" class="hidden">
+        <input type="email" id="reset-email" placeholder="Nhập email để nhận mã">
+        <button id="btn-send-otp" onclick="handleSendOTP()">Nhận mã 6 số</button>
+        
+        <div id="otp-confirm" class="hidden">
+            <input type="text" id="otp-code" placeholder="Nhập mã 6 số từ Gmail">
+            <input type="password" id="new-password" placeholder="Mật khẩu mới">
+            <button onclick="handleVerifyOTP()">Xác nhận đổi mật khẩu</button>
+        </div>
+        <p style="text-align:center"><a href="#" onclick="toggleReset(false)">Quay lại đăng nhập</a></p>
+    </div>
+</div>
+
+<div id="main-content" class="hidden">
+    <h2>Chào mừng, <span id="user-display"></span>!</h2>
+    <p>Chức vụ: <span id="role-display">Đang tải...</span></p>
+    
+    <div id="admin-only" class="hidden admin-section">
+        Khu vực này CHỈ dành cho Quản trị viên (Admin)
+    </div>
+
+    <button onclick="handleLogout()" style="background:#ff4d4d; margin-top:20px;">Đăng xuất</button>
+</div>
+
+<script>
+    // --- CẤU HÌNH ---
+    const SUPABASE_URL = 'DÁN_URL_CỦA_BẠN_VÀO_ĐÂY';
+    const SUPABASE_KEY = 'DÁN_ANON_KEY_CỦA_BẠN_VÀO_ĐÂY';
+    const supabase = createSupabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+    // --- XỬ LÝ ĐĂNG NHẬP ---
+    async function handleLogin() {
+        const email = document.getElementById('email').value;
+        const password = document.getElementById('password').value;
+        const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+        if (error) alert("Lỗi: " + error.message);
+    }
+
+    // --- GỬI MÃ OTP ---
+    async function handleSendOTP() {
+        const email = document.getElementById('reset-email').value;
+        const { error } = await supabase.auth.resetPasswordForEmail(email);
+        if (error) alert("Lỗi: " + error.message);
+        else {
+            alert("Mã 6 số đã được gửi vào Gmail!");
+            document.getElementById('otp-confirm').classList.remove('hidden');
+            document.getElementById('btn-send-otp').classList.add('hidden');
+        }
+    }
+
+    // --- XÁC NHẬN OTP VÀ CẬP NHẬT PASS ---
+    async function handleVerifyOTP() {
+        const email = document.getElementById('reset-email').value;
+        const token = document.getElementById('otp-code').value;
+        const newPassword = document.getElementById('new-password').value;
+
+        const { data, error } = await supabase.auth.verifyOtp({ email, token, type: 'recovery' });
+        
+        if (error) alert("Mã không đúng: " + error.message);
+        else {
+            const { error: updateError } = await supabase.auth.updateUser({ password: newPassword });
+            if (updateError) alert("Lỗi cập nhật: " + updateError.message);
+            else {
+                alert("Đổi mật khẩu thành công! Hãy đăng nhập lại.");
+                location.reload();
+            }
+        }
+    }
+
+    // --- THEO DÕI TRẠNG THÁI (Logout nếu sai user/hết hạn) ---
+    supabase.auth.onAuthStateChange(async (event, session) => {
+        if (session) {
+            document.getElementById('auth-form').classList.add('hidden');
+            document.getElementById('main-content').classList.remove('hidden');
+            document.getElementById('user-display').innerText = session.user.email;
+            
+            // Lấy quyền (Role) từ bảng profiles
+            const { data } = await supabase.from('profiles').select('role').eq('id', session.user.id).single();
+            if (data) {
+                document.getElementById('role-display').innerText = data.role;
+                if (data.role === 'admin') document.getElementById('admin-only').classList.remove('hidden');
+            }
+        } else {
+            document.getElementById('auth-form').classList.remove('hidden');
+            document.getElementById('main-content').classList.add('hidden');
+        }
+    });
+
+    async function handleLogout() {
+        await supabase.auth.signOut();
+    }
+
+    function toggleReset(show) {
+        document.getElementById('login-fields').classList.toggle('hidden', show);
+        document.getElementById('reset-fields').classList.toggle('hidden', !show);
+        document.getElementById('form-title').innerText = show ? "Khôi phục mật khẩu" : "Đăng nhập";
+    }
+</script>
+
+</body>
+</html>
